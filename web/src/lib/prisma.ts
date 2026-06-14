@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 
+// Prevent Prisma from being initialized multiple times in development
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
 export const prisma =
