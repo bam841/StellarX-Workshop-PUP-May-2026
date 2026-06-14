@@ -7,6 +7,7 @@ import AddTrustline from '@/components/AddTrustline';
 import BalanceCard from '@/components/BalanceCard';
 import SendPayment from '@/components/SendPayment';
 import SavingsGoal from '@/components/SavingsGoal';
+import GigDashboard from '@/components/GigDashboard';
 
 export default function Home() {
   const wallet = useWallet();
@@ -62,8 +63,9 @@ export default function Home() {
           </>
         )}
 
-        {/* The Soroban panel renders even before connecting (reads are wallet-free). */}
+        {/* The Soroban panels render even before connecting (reads are wallet-free). */}
         <SavingsGoal publicKey={publicKey} />
+        <GigDashboard publicKey={publicKey} />
 
         <footer className="mt-10 text-center text-xs text-gray-400">
           Built for the StellarX PH workshop @ PUP QC · pick an idea, then bend

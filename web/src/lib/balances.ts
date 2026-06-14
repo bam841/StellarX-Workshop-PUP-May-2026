@@ -37,3 +37,17 @@ export async function fetchBalances(publicKey: string): Promise<Balances> {
     throw e;
   }
 }
+
+export async function hasUSDCTrustline(publicKey: string): Promise<boolean> {
+  try {
+    const account = await horizon.loadAccount(publicKey);
+    return account.balances.some(
+      (b) =>
+        (b.asset_type === 'credit_alphanum4' ||
+          b.asset_type === 'credit_alphanum12') &&
+        b.asset_code === 'USDC',
+    );
+  } catch {
+    return false;
+  }
+}
