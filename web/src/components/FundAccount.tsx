@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { fundTestnetAccount } from '@/lib/stellar';
 
+import { Coins, Loader2 } from 'lucide-react';
+
 export default function FundAccount({
   publicKey,
   onFunded,
@@ -26,15 +28,20 @@ export default function FundAccount({
   };
 
   return (
-    <div>
+    <div className="flex-1">
       <button
         onClick={fund}
         disabled={loading}
-        className="rounded bg-amber-400 px-3 py-1.5 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-500 disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-xs font-bold text-white transition-all hover:bg-indigo-400 disabled:opacity-50 shadow-lg shadow-indigo-500/20"
       >
-        {loading ? 'Funding…' : 'Fund with Friendbot (testnet)'}
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+          <>
+            <Coins className="w-4 h-4" />
+            Fund Account
+          </>
+        )}
       </button>
-      {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-[10px] text-red-500 uppercase font-bold text-center">{error}</p>}
     </div>
   );
 }

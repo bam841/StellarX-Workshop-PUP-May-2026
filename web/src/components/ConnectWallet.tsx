@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import type { WalletState } from '@/hooks/useWallet';
 
+import { LogOut, Copy, Check } from 'lucide-react';
+
 export default function ConnectWallet({
   publicKey,
   connecting,
@@ -20,19 +22,20 @@ export default function ConnectWallet({
 
   if (publicKey) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <button
           onClick={copy}
-          title="Copy full address"
-          className="rounded bg-gray-100 px-3 py-1 font-mono text-sm text-gray-700 transition-colors hover:bg-gray-200"
+          className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 font-mono text-xs text-slate-300 transition-all hover:border-slate-700 hover:text-white"
         >
-          {copied ? 'Copied!' : `${publicKey.slice(0, 6)}…${publicKey.slice(-6)}`}
+          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-500" />}
+          {publicKey.slice(0, 4)}…{publicKey.slice(-4)}
         </button>
         <button
           onClick={disconnect}
-          className="text-sm text-red-500 hover:underline"
+          className="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-500 hover:text-red-400 hover:border-red-400/50 transition-all"
+          title="Disconnect"
         >
-          Disconnect
+          <LogOut className="w-4 h-4" />
         </button>
       </div>
     );
@@ -43,11 +46,12 @@ export default function ConnectWallet({
       <button
         onClick={connect}
         disabled={connecting}
-        className="rounded bg-indigo-600 px-4 py-2 text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+        className="relative group px-6 py-2.5 rounded-xl bg-white text-slate-950 font-bold text-sm transition-all hover:bg-slate-200 disabled:opacity-50"
       >
-        {connecting ? 'Connecting…' : 'Connect Freighter'}
+        <div className="absolute inset-0 rounded-xl bg-indigo-500/20 blur-xl group-hover:bg-indigo-500/40 transition-all" />
+        <span className="relative">{connecting ? 'Syncing...' : 'Connect Wallet'}</span>
       </button>
-      {error && <p className="mt-2 max-w-xs text-sm text-red-500">{error}</p>}
+      {error && <p className="mt-2 max-w-xs text-[10px] uppercase font-bold text-red-500 tracking-tighter">{error}</p>}
     </div>
   );
 }

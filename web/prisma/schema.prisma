@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Client {
+  id        String   @id // Stellar Public Key
+  name      String
+  company   String?
+  createdAt DateTime @default(now())
+  gigs      Gig[]
+}
+
+model Freelancer {
+  id        String   @id // Stellar Public Key
+  name      String
+  skills    String?
+  createdAt DateTime @default(now())
+  gigs      Gig[]
+}
+
+model Gig {
+  id              Int      @id @default(autoincrement())
+  title           String
+  description     String?
+  amount          Int      // Amount in USDC
+  status          Int      @default(0) // 0: Init, 1: Funded, 2: Released, 3: Refunded
+  createdAt       DateTime @default(now())
+  
+  client          Client     @relation(fields: [clientId], references: [id])
+  clientId        String
+  
+  freelancer      Freelancer @relation(fields: [freelancerId], references: [id])
+  freelancerId    String
+}

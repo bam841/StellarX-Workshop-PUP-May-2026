@@ -9,40 +9,53 @@ import {
   buildReleaseXDR,
   buildUSDCStoreTrustlineXDR,
 } from '@/lib/gig-escrow';
+import { useUser } from '@/context/UserContext';
 import { hasUSDCTrustline } from '@/lib/balances';
 import { submitSignedXDR, pollTransaction } from '@/lib/payment';
 import { NETWORK_PASSPHRASE } from '@/lib/stellar';
+import { Plus, Send, CheckCircle2, Wallet, User, Briefcase, RefreshCcw } from 'lucide-react';
 
 export default function GigDashboard({ publicKey }: { publicKey: string | null }) {
+  const { role, profile } = useUser();
   const configured = Boolean(GIG_CONTRACT_ID);
-  const [status, setStatus] = useState<EscrowStatus>(EscrowStatus.Initialized);
+  
+  const [gigs, setGigs] = useState<any[]>([]);
+  const [freelancers, setFreelancers] = useState<any[]>([]);
   const [hasTrustline, setHasTrustline] = useState<boolean>(true);
-  const [loading, setLoading] = useState(configured);
-  const [freelancer, setFreelancer] = useState('');
-  const [amount, setAmount] = useState('');
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
-  const refresh = useCallback(async () => {
-    if (!configured) return;
+  // Form states for Client
+  const [newGigTitle, setNewGigTitle] = useState('');
+  const [selectedFreelancer, setSelectedFreelancer] = useState('');
+  const [newGigAmount, setNewGigAmount] = useState('');
+
+  const fetchData = useCallback(async () => {
+    if (!publicKey || !role) return;
     setLoading(true);
-    setError('');
     try {
-      setStatus(await getEscrowStatus());
-      if (publicKey) {
-        setHasTrustline(await hasUSDCTrustline(publicKey));
+      // Fetch Gigs
+      const gigRes = await fetch(`/api/gigs?publicKey=${publicKey}&role=${role}`);
+      if (gigRes.ok) setGigs(await gigRes.json());
+
+      // If client, fetch freelancers
+      if (role === 'CLIENT') {
+        const freeRes = await fetch('/api/freelancers');
+        if (freeRes.ok) setFreelancers(await freeRes.json());
       }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to read escrow status');
+
+      setHasTrustline(await hasUSDCTrustline(publicKey));
+    } catch (e) {
+      console.error('Fetch failed', e);
     } finally {
       setLoading(false);
     }
-  }, [configured, publicKey]);
+  }, [publicKey, role]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    fetchData();
+  }, [fetchData]);
 
   const signAndSubmit = async (xdr: string) => {
     if (!publicKey) return;
@@ -51,189 +64,256 @@ export default function GigDashboard({ publicKey }: { publicKey: string | null }
       networkPassphrase: NETWORK_PASSPHRASE,
       address: publicKey,
     });
-    if (signed.error) {
-      throw new Error(
-        typeof signed.error === 'string' ? signed.error : 'Signing was rejected',
-      );
-    }
+    if (signed.error) throw new Error('Signing was rejected');
     const hash = await submitSignedXDR(signed.signedTxXdr);
     await pollTransaction(hash);
   };
 
-  const addTrustline = async () => {
-    if (!publicKey) return;
+  const createGig = async () => {
+    if (!publicKey || role !== 'CLIENT') return;
     setBusy(true);
-    setMsg('');
     setError('');
     try {
-      const xdr = await buildUSDCStoreTrustlineXDR(publicKey);
+      // 1. Initialize On-Chain
+      const xdr = await buildInitEscrowXDR(publicKey, selectedFreelancer, Number(newGigAmount));
       await signAndSubmit(xdr);
-      setMsg('USDC Trustline added!');
-      await refresh();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to add trustline');
+
+      // 2. Save Off-Chain
+      await fetch('/api/gigs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newGigTitle,
+          amount: newGigAmount,
+          clientId: publicKey,
+          freelancerId: selectedFreelancer,
+        }),
+      });
+
+      setNewGigTitle('');
+      setNewGigAmount('');
+      await fetchData();
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
   };
 
-  const initEscrow = async () => {
-    if (!publicKey) return;
+  const handleDeposit = async (gigId: number) => {
     setBusy(true);
-    setMsg('');
-    setError('');
     try {
-      const xdr = await buildInitEscrowXDR(publicKey, freelancer, Number(amount));
+      const xdr = await buildDepositXDR(publicKey!);
       await signAndSubmit(xdr);
-      setMsg('Escrow initialized!');
-      await refresh();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Initialization failed');
+      await fetch('/api/gigs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: gigId, status: 1 }), // Funded
+      });
+      await fetchData();
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
   };
 
-  const deposit = async () => {
-    if (!publicKey) return;
+  const handleRelease = async (gigId: number) => {
     setBusy(true);
-    setMsg('');
-    setError('');
     try {
-      const xdr = await buildDepositXDR(publicKey);
+      const xdr = await buildReleaseXDR(publicKey!);
       await signAndSubmit(xdr);
-      setMsg('Funds deposited into escrow!');
-      await refresh();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Deposit failed');
+      await fetch('/api/gigs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: gigId, status: 2 }), // Released
+      });
+      await fetchData();
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
   };
 
-  const release = async () => {
-    if (!publicKey) return;
-    setBusy(true);
-    setMsg('');
-    setError('');
-    try {
-      const xdr = await buildReleaseXDR(publicKey);
-      await signAndSubmit(xdr);
-      setMsg('Funds released to freelancer!');
-      await refresh();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Release failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!configured) {
-    return (
-      <div className="mt-6 rounded border border-dashed border-gray-300 bg-gray-50 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 text-purple-700">Gig Payment Rail (Escrow)</h2>
-        <p className="mt-2 text-sm text-gray-600">
-          Deploy the <code>gig-escrow</code> contract to enable this dashboard.
-        </p>
-      </div>
-    );
-  }
+  if (!configured) return null;
 
   return (
-    <div className="mt-6 rounded border border-purple-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-xl font-bold text-purple-800">
-        Gig Payment Rail (USDC Escrow)
-      </h2>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <Briefcase className="w-5 h-5 text-indigo-400" />
+          {role === 'CLIENT' ? 'Client Workspace' : 'Freelancer Portal'}
+        </h2>
+        <button onClick={fetchData} className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 transition-colors">
+          <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
 
-      {loading && <p className="text-sm text-gray-400">Syncing with blockchain…</p>}
-
-      {!loading && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
-            <span className="text-sm font-medium text-purple-700">Escrow Status:</span>
-            <span className="px-2 py-1 text-xs font-bold uppercase rounded bg-purple-200 text-purple-800">
-              {EscrowStatus[status]}
-            </span>
+      {!hasTrustline && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Wallet className="w-5 h-5 text-amber-500" />
+            <p className="text-sm text-amber-200/80">USDC Trustline required to handle gig payments.</p>
           </div>
-
-          {publicKey && !hasTrustline && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-xs text-amber-700 mb-2">
-                You need a USDC Trustline to receive or handle USDC.
-              </p>
-              <button
-                onClick={addTrustline}
-                disabled={busy}
-                className="w-full py-2 bg-amber-600 text-white rounded font-bold hover:bg-amber-700 transition-colors disabled:opacity-50"
-              >
-                {busy ? 'Processing...' : 'Enable USDC Trustline'}
-              </button>
-            </div>
-          )}
-
-          {(status === EscrowStatus.Initialized || status === EscrowStatus.Released || status === EscrowStatus.Refunded) && (
-            <div className="space-y-3 p-4 border border-gray-100 rounded-lg bg-gray-50">
-               <p className="text-sm font-semibold text-gray-700">1. Setup Escrow</p>
-               <input
-                type="text"
-                placeholder="Freelancer Public Key (G...)"
-                value={freelancer}
-                onChange={(e) => setFreelancer(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-              />
-              <input
-                type="number"
-                placeholder="Amount (USDC)"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-              />
-              <button
-                onClick={initEscrow}
-                disabled={busy || !publicKey || !freelancer || !amount}
-                className="w-full py-2 bg-purple-600 text-white rounded font-bold hover:bg-purple-700 transition-colors disabled:opacity-50"
-              >
-                {status === EscrowStatus.Initialized ? 'Initialize Escrow' : 'Start New Gig Escrow'}
-              </button>
-            </div>
-          )}
-
-          {status === EscrowStatus.Initialized && (
-             <div className="p-4 border border-gray-100 rounded-lg bg-gray-50">
-                <p className="text-sm font-semibold text-gray-700 mb-2">2. Deposit Funds</p>
-                <button
-                  onClick={deposit}
-                  disabled={busy || !publicKey}
-                  className="w-full py-2 bg-indigo-600 text-white rounded font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                >
-                  Deposit USDC into Escrow
-                </button>
-             </div>
-          )}
-
-          {status === EscrowStatus.Funded && (
-             <div className="p-4 border border-gray-100 rounded-lg bg-gray-50">
-                <p className="text-sm font-semibold text-gray-700 mb-2">3. Release to Freelancer</p>
-                <button
-                  onClick={release}
-                  disabled={busy || !publicKey}
-                  className="w-full py-2 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                >
-                  Release USDC Payment
-                </button>
-             </div>
-          )}
-
-          {status === EscrowStatus.Released && (
-            <div className="p-4 bg-emerald-50 text-emerald-800 rounded-lg text-center font-bold">
-               Gig Paid Successfully! 🎉
-            </div>
-          )}
+          <button 
+             onClick={async () => {
+                const xdr = await buildUSDCStoreTrustlineXDR(publicKey!);
+                await signAndSubmit(xdr);
+                await fetchData();
+             }}
+             className="px-4 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-400 transition-colors"
+          >
+            Enable USDC
+          </button>
         </div>
       )}
 
-      {msg && <p className="mt-3 text-sm text-emerald-600 font-medium text-center">{msg}</p>}
-      {error && <p className="mt-3 text-sm text-red-500 font-medium text-center">{error}</p>}
+      {role === 'CLIENT' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* New Gig Form */}
+          <div className="md:col-span-1 p-6 rounded-3xl border border-slate-800 bg-slate-900/50 backdrop-blur-xl">
+            <h3 className="font-bold text-slate-200 mb-4 flex items-center gap-2">
+              <Plus className="w-4 h-4" /> New Gig
+            </h3>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Project Title"
+                value={newGigTitle}
+                onChange={(e) => setNewGigTitle(e.target.value)}
+                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              <select
+                value={selectedFreelancer}
+                onChange={(e) => setSelectedFreelancer(e.target.value)}
+                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">Select Freelancer</option>
+                {freelancers.map(f => (
+                  <option key={f.id} value={f.id}>{f.name} ({f.skills || 'General'})</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                placeholder="Amount (USDC)"
+                value={newGigAmount}
+                onChange={(e) => setNewGigAmount(e.target.value)}
+                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              <button
+                onClick={createGig}
+                disabled={busy || !newGigTitle || !selectedFreelancer || !newGigAmount}
+                className="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 transition-all disabled:opacity-50"
+              >
+                {busy ? 'Processing...' : 'Create & Initialize'}
+              </button>
+            </div>
+          </div>
+
+          {/* Gigs List */}
+          <div className="md:col-span-2 space-y-4">
+             {gigs.length === 0 ? (
+               <div className="h-full flex flex-col items-center justify-center p-12 rounded-3xl border border-dashed border-slate-800 text-slate-500">
+                  <p>No active gigs found.</p>
+               </div>
+             ) : (
+               gigs.map(gig => (
+                 <div key={gig.id} className="p-5 rounded-2xl border border-slate-800 bg-slate-900/30 hover:border-slate-700 transition-all">
+                    <div className="flex items-start justify-between mb-4">
+                       <div>
+                          <h4 className="font-bold text-white">{gig.title}</h4>
+                          <div className="flex items-center gap-2 mt-1">
+                             <User className="w-3 h-3 text-slate-500" />
+                             <p className="text-xs text-slate-400">Freelancer: {gig.freelancer.name}</p>
+                          </div>
+                       </div>
+                       <div className="text-right">
+                          <p className="text-sm font-mono text-cyan-400 font-bold">{gig.amount} USDC</p>
+                          <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            gig.status === 0 ? 'bg-indigo-500/10 text-indigo-400' :
+                            gig.status === 1 ? 'bg-emerald-500/10 text-emerald-400' :
+                            'bg-slate-500/10 text-slate-400'
+                          }`}>
+                            {gig.status === 0 ? 'Initialized' : gig.status === 1 ? 'Funded' : 'Released'}
+                          </span>
+                       </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                       {gig.status === 0 && (
+                         <button 
+                           onClick={() => handleDeposit(gig.id)}
+                           disabled={busy}
+                           className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-500 transition-colors disabled:opacity-50"
+                         >
+                           <Send className="w-3 h-3" /> Deposit Funds
+                         </button>
+                       )}
+                       {gig.status === 1 && (
+                         <button 
+                            onClick={() => handleRelease(gig.id)}
+                            disabled={busy}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 transition-colors disabled:opacity-50"
+                         >
+                           <CheckCircle2 className="w-3 h-3" /> Release Payment
+                         </button>
+                       )}
+                    </div>
+                 </div>
+               ))
+             )}
+          </div>
+        </div>
+      )}
+
+      {role === 'FREELANCER' && (
+        <div className="space-y-4">
+          <div className="p-6 rounded-3xl border border-slate-800 bg-slate-900/50 backdrop-blur-xl">
+             <h3 className="font-bold text-slate-200 mb-6 flex items-center gap-2">
+               <Briefcase className="w-4 h-4 text-cyan-400" /> Incoming Assignments
+             </h3>
+             
+             {gigs.length === 0 ? (
+               <div className="text-center py-12 text-slate-500">
+                  <p>You haven't been assigned any gigs yet.</p>
+               </div>
+             ) : (
+               <div className="grid grid-cols-1 gap-4">
+                  {gigs.map(gig => (
+                    <div key={gig.id} className="p-5 rounded-2xl border border-slate-800 bg-slate-950/50">
+                       <div className="flex items-center justify-between">
+                          <div>
+                             <h4 className="font-bold text-white text-lg">{gig.title}</h4>
+                             <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                               Client: <span className="text-slate-300 font-medium">{gig.client.name}</span>
+                             </p>
+                          </div>
+                          <div className="text-right">
+                             <p className="text-lg font-mono text-cyan-400 font-bold">{gig.amount} USDC</p>
+                             <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-1 ${
+                               gig.status === 1 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-500/10 text-slate-400'
+                             }`}>
+                               {gig.status === 1 ? 'Work Authorized (Funded)' : gig.status === 2 ? 'Paid' : 'Awaiting Funds'}
+                             </span>
+                          </div>
+                       </div>
+                       {gig.status === 1 && (
+                         <div className="mt-4 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
+                            <p className="text-xs text-emerald-400/80 flex items-center gap-2">
+                               <CheckCircle2 className="w-3 h-3" /> The funds for this gig are locked in the smart contract. You can safely begin working.
+                            </p>
+                         </div>
+                       )}
+                    </div>
+                  ))}
+               </div>
+             )}
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-center text-sm text-red-400">{error}</p>}
     </div>
   );
 }

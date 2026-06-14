@@ -5,6 +5,8 @@ import { signAndSubmit } from '@/lib/sign';
 
 type Status = 'idle' | 'working' | 'done' | 'error';
 
+import { ShieldCheck, Loader2 } from 'lucide-react';
+
 export default function AddTrustline({
   publicKey,
   onDone,
@@ -30,19 +32,24 @@ export default function AddTrustline({
   };
 
   if (status === 'done') {
-    return <p className="text-sm text-emerald-600">USDC trustline added.</p>;
+    return (
+      <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+        <ShieldCheck className="w-4 h-4" />
+        USDC Active
+      </div>
+    );
   }
 
   return (
-    <div>
+    <div className="flex-1">
       <button
         onClick={add}
         disabled={status === 'working'}
-        className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/50 px-4 py-2.5 text-xs font-bold text-slate-300 transition-all hover:border-cyan-500/50 hover:text-cyan-400 disabled:opacity-50"
       >
-        {status === 'working' ? 'Adding USDC trustline…' : 'Add USDC trustline'}
+        {status === 'working' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Enable USDC'}
       </button>
-      {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-[10px] text-red-500 uppercase font-bold text-center">{error}</p>}
     </div>
   );
 }

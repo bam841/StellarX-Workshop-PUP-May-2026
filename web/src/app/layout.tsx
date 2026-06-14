@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "Wallet, payments, and a Soroban contract on Stellar testnet.",
 };
 
+import { UserProvider } from "@/context/UserContext";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,9 +27,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100">
+        <UserProvider>
+          {children}
+        </UserProvider>
+      </body>
     </html>
   );
 }

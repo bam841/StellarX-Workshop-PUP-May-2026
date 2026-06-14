@@ -26,34 +26,40 @@ export default function BalanceCard({
 
   if (loading) {
     return (
-      <div className="mt-4 grid animate-pulse grid-cols-2 gap-4">
-        <div className="h-20 rounded bg-gray-200" />
-        <div className="h-20 rounded bg-gray-200" />
+      <div className="grid grid-cols-2 gap-4 animate-pulse">
+        <div className="h-24 rounded-2xl bg-slate-900" />
+        <div className="h-24 rounded-2xl bg-slate-900" />
       </div>
     );
   }
 
   if (balances && !balances.funded) {
     return (
-      <p className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        This account isn’t funded yet. Click “Fund with Friendbot” above.
-      </p>
+      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">
+        <p className="text-xs font-bold uppercase tracking-widest text-amber-500/80">Account Status</p>
+        <p className="text-sm text-amber-200/60 mt-1 italic">Awaiting Network Activation...</p>
+      </div>
     );
   }
 
-  if (!balances) {
-    return <p className="mt-4 text-sm text-red-500">Failed to load balances.</p>;
-  }
+  if (!balances) return null;
 
   return (
-    <div className="mt-4 grid grid-cols-2 gap-4">
-      <div className="rounded border border-gray-200 bg-white p-4">
-        <p className="text-xs uppercase tracking-wide text-gray-500">XLM</p>
-        <p className="text-2xl font-bold text-gray-900">{balances.xlm}</p>
+    <div className="grid grid-cols-2 gap-4">
+      <div className="group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-5 backdrop-blur-xl transition-all hover:border-indigo-500/30">
+        <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity">
+           <div className="w-8 h-8 rounded-full border-2 border-indigo-400" />
+        </div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">XLM Balance</p>
+        <p className="mt-2 text-2xl font-mono font-bold text-white tracking-tight">{balances.xlm}</p>
       </div>
-      <div className="rounded border border-gray-200 bg-white p-4">
-        <p className="text-xs uppercase tracking-wide text-gray-500">USDC</p>
-        <p className="text-2xl font-bold text-gray-900">{balances.usdc}</p>
+      
+      <div className="group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-5 backdrop-blur-xl transition-all hover:border-cyan-500/30">
+        <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity">
+           <div className="w-8 h-8 rounded-full border-2 border-cyan-400 bg-cyan-400/10" />
+        </div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">USDC Assets</p>
+        <p className="mt-2 text-2xl font-mono font-bold text-white tracking-tight">{balances.usdc}</p>
       </div>
     </div>
   );
